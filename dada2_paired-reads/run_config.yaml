@@ -1,0 +1,37 @@
+# PLEASE review all options below and make sure they match your current environment
+
+# project options (title for the report)
+expRef: "PRJEB45207_Park_2021_16S"
+
+# IO options (full path to files and folders)
+metadata: "sample_metadata.tsv"
+readfolder: "paired_reads"
+outpath: "dada2_results_illumina"
+
+# server options (number of allocated threads for this job)
+numThreads: 80
+
+# read filtering limits (applied in the fastqPairedFilter dada command)
+# the first two values are the length of the primers to be trimmed out of the amplicons
+ampliconName: "V3"
+forwardprimerName: "518F-forward"
+forwardprimer: "CCAGCAGCCGCGGTAATACG"
+reverseprimerName: "800R-reverse"
+reverseprimer: "TACCAGGGTATCTAATCC"
+truncLenR1: 250
+truncLenR2: 250
+maxN: 0
+maxEE: 2 
+truncQ: 2
+
+# taxonomy options
+silvaDBPath: "/data/biodata/dada2_taxonomy"
+#silvaTrainSet: "silva_nr_v132_train_set.fa.gz"
+silvaTrainSet: "silva_nr99_v138.1_train_set.fa.gz"
+#silvaSpecies: "silva_species_assignment_v132.fa.gz"
+silvaSpecies: "silva_species_assignment_v138.1.fa.gz"
+minBoot: 50
+tryRC: FALSE
+allowMultiple: FALSE
+
+#  add more options here and initialize them in the code before using them

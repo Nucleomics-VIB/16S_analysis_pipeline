@@ -1,0 +1,775 @@
+---
+title:  |
+  | 16S Sequel IIe analysis report
+author: 
+- "[VIB - Nucleomics Core, nucleomics@vib.be]"
+date: "March 2nd, 2022 - version 1.0"
+fontsize: 10pt
+geometry: top=1cm, bottom=1cm, left=2.5cm, right=1.5cm, includeheadfoot=true
+bibliography: tex_data/bibliography.bib
+output:
+  rmarkdown::pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    fig_caption: no
+    fig_width: 5
+    fig_height: 4
+    includes:  
+      in_header: tex_data/preamble.tex
+---
+
+```{r markdown setup, include=FALSE}
+# call from CLI with:
+# cd folder containing the Rmd, yaml, and metadata.tsv files
+# R --slave -e 'rmarkdown::render("/path_to/DADA2_pacbio-reads.Rmd", "pdf_document")'
+
+# set default parameters [echo=TRUE to include code]
+# general
+library("knitr")
+library("rmarkdown")
+library("yaml")
+library("dada2")
+library("Biostrings")
+library("DECIPHER")
+library("phangorn")
+library("phyloseq")
+library("ggplot2")
+library("ggtree")
+library("readr")
+library("plyr")
+
+# markdown options
+workdir <- getwd()
+opts_chunk$set(message=FALSE, 
+               warning=FALSE, 
+               eval=TRUE,
+               echo=FALSE,
+               include=TRUE,
+               include_graphics=TRUE,
+               fig.cap="",
+               fig.show="asis",
+               fig.keep="high",
+               cache=TRUE,
+               comment=NA,
+               root.dir=workdir)
+options(scipen=999)
+setwd(workdir)
+```
+
+```{r config setup, include=FALSE}
+# load config file and parse variables
+config <- yaml.load_file("run_config.yaml")
+
+# project options
+expRef <- config$expRef
+
+# IO options
+outpath <- config$outpath
+metadata <- config$metadata
+readfolder <- config$readfolder
+
+# server options
+numthr <- config$numThreads
+# setThreadOptions(numThreads = numthr, stackSize = "auto")
+
+# amplicon options
+ampliconName <- config$ampliconName
+forwardprimerName  <- config$forwardprimerName
+forwardprimer <- config$forwardprimer
+reverseprimerName <- config$reverseprimerName
+reverseprimer <- config$reverseprimer
+
+# read filtering options
+minLen <- config$minLen
+maxLen <- config$maxLen
+maxN <- config$maxN
+maxEE <- config$maxEE
+truncQ <- config$truncQ
+
+# SILVA taxonomy options
+silvaDBPath <- config$silvaDBPath
+silvaTrainSet <- file.path(silvaDBPath, config$silvaTrainSet, fsep = .Platform$file.sep)
+silvaSpecies <- file.path(silvaDBPath, config$silvaSpecies, fsep = .Platform$file.sep)
+minBoot <- config$minBoot
+allowMultiple <- as.logical(config$allowMultiple)
+tryRC <- as.logical(config$tryRC)
+
+# create the results directories
+results_path <- file.path(outpath, fsep = .Platform$file.sep)
+picture_path <- file.path(outpath, "pictures", fsep = .Platform$file.sep)
+dir.create(picture_path, recursive = TRUE, showWarnings = FALSE)
+```
+
+last edits: `r format(Sys.time(), "%a %b %d, %Y")`
+
+\newpage
+
+\hspace{1cm}
+
+# Experiment: `r expRef`
+
+## Aims
+
+Analyze HiGFi read data obtained from sequencing multiple 16S amplicon samples, quantify the organisms present in each sample, identify them by comparing to a taxonomy reference, and annotate the obtained **Amplicon Specific Variants (ASV)**, finally, produce quality control and exploratory plots to document the process and provide useful data to the customer.
+
+The **DADA2** pipeline proceeds as follows [@DADA2_vignette]:
+
+* Filter and trim
+* Dereplicate
+* Learn error rates
+* Infer sample composition
+* Make sequence table
+* Remove chimeras
+
+After DADA2 processing, phyloseq is used to identify the organisms based on the popular SILVA database and to plot various metrics describing the data.
+
+# DADA2 Analysis
+
+The popular R package **[DADA2](https://benjjneb.github.io/dada2/)** was used according to online tutorial material.
+
+## Sample metadata 
+
+The sequenced amplicon (`r ampliconName`) was amplified using:
+
+* forward primer `r forwardprimerName` (`r forwardprimer`)
+* reverse primer `r reverseprimerName` (`r reverseprimer`)
+
+The next table reports the metadata attached to this experiment, with exclusion of the read file names for the sake of space. This information has been added to the final result object delivered to the customer (a dump of the R phyloseq list).
+
+Table 1: metadata information linked to this experiment
+
+\footnotesize
+
+```{r load meta data}
+sample_metadata <- read_delim(metadata, 
+    delim = "\t", 
+    escape_double = FALSE, 
+    trim_ws = TRUE,
+    show_col_types = FALSE)
+
+# print table
+kable(sample_metadata[, -which(names(sample_metadata) %in% c("r1_file","r2_file"))])
+```
+
+\normalsize
+
+\newpage
+
+## Read Filtering and Trimming
+
+A sample of 5e+5 reads from each of the first 8 samples were analyzed to plot the basecall quality distributions across the full read lengths. The corresponding plots are shown in the next figure.
+
+\footnotesize
+
+```{r raw reads QC plots}
+fnFs <- paste(readfolder, sort(sample_metadata$r1_file), sep="/")
+
+# plot fastq qualities and lengths for the first 8 samples
+rqp <- suppressWarnings(plotQualityProfile(fnFs[1:8],
+                        n=5e+5,
+                        aggregate=FALSE))
+outfile <- file.path(outpath, "pictures", "rawRead_QC.pdf", fsep = .Platform$file.sep)
+ggsave(outfile, 
+       rqp,
+       device = "pdf",
+       width = 21,
+       height = 28,
+       units = "cm",
+       dpi = 300)
+```
+
+\normalsize
+
+Figure 1: Quality plots for the raw reads
+
+\begin{center}
+
+\includegraphics[width=400pt]{`r outpath`/pictures/rawRead_QC.pdf}
+
+\end{center}
+
+The raw Illumina paired reads were then trimmed and filtered based on provided parameters in order to retain high quality data only for the next part of the pipeline. 
+
+The following filters have been applied:
+
+* trim primer sequences at both ends (`r nchar(forwardprimer)` and `r nchar(reverseprimer)` nucleotides)
+* discard reads shorter than `r minLen` or larger than `r maxLen` nucleotides and too far from the expected amplicon size
+* discard reads with more than `r maxN` N-bases
+* discard reads with higher than maxEE `r maxEE` "expected errors"  
+* truncate reads at the first instance of a quality score less than or equal to `r truncQ`
+
+Note: reads shorter than `r minLen`or larger than `r maxLen` nucleotides are removed by default.
+
+Table 2: The read counts before and after filtering are shown in the table below.
+
+\footnotesize
+
+```{r Filter and trim}
+sample.names <- gsub(".f[astq]+.gz", "", basename(fnFs))
+
+filtFs <- file.path(outpath, "filtered_reads", paste0(sample.names, "_filt.fq.gz"))
+names(filtFs) <- sample.names
+trimLeft <- nchar(forwardprimer)
+trimRight <- nchar(reverseprimer)
+
+out <- filterAndTrim(fnFs, filtFs,
+                     truncQ=truncQ, 
+                     trimLeft=trimLeft,
+                     trimRight=trimRight,
+                     minLen=minLen,
+                     maxLen=maxLen,
+                     maxN=maxN, 
+                     maxEE=maxEE, 
+                     rm.phix=TRUE,
+                     compress=TRUE, 
+                     multithread=numthr)
+
+# show table of filtering results
+kable(out)
+
+# plot fastq qualities and lengths for first 8 pairs
+fqp <- suppressWarnings(plotQualityProfile(filtFs[1:8],
+                                           n=5e+5,
+                                           aggregate=FALSE))
+outfile <- file.path(outpath, "pictures", "filteredRead_QC.pdf", fsep = .Platform$file.sep)
+ggsave(outfile, 
+       fqp,
+       device = "pdf",
+       width = 21,
+       height = 28,
+       units = "cm",
+       dpi = 300)
+```
+
+\normalsize
+
+Figure 2: Quality plots for the filtered reads
+
+\begin{center}
+
+\includegraphics[width=400pt]{`r outpath`/pictures/filteredRead_QC.pdf}
+
+\end{center}
+
+\newpage
+
+## Learn error rates
+
+The filtered reads were used to compute error rates based on 10^8 analyzed reads extracted from different samples. 
+
+\footnotesize
+
+```{r Learn error rates, include=FALSE}
+
+# reads1
+errF <- learnErrors(filtFs, 
+                     multithread=numthr, 
+                     nbases=1E+8, 
+                     randomize=TRUE)
+
+errFplot <- plotErrors(errF, 
+                       nominalQ=TRUE)
+
+outfile <- file.path(outpath, "pictures", "plotErrorsFwd.pdf", fsep = .Platform$file.sep)
+
+suppressWarnings(ggsave(outfile, 
+       errFplot,
+       device = "pdf",
+       width = 21,
+       height = 28,
+       units = "cm",
+       dpi = 300))
+
+```
+
+\normalsize
+
+Figure 3: Error plots for the filtered reads
+
+\begin{center}
+
+\includegraphics[width=200pt]{`r outpath`/pictures/plotErrorsFwd.pdf}
+
+\end{center}
+
+## De-replicate
+
+The filtered reads were then de-replicated and denoised based on mutliple pairwise alignments.
+
+\footnotesize
+
+```{r dereplicate reads}
+derepFs <- derepFastq(filtFs,
+                      n=1e6,
+                      verbose=FALSE)
+
+```
+
+\normalsize
+
+NOTE: De-replication results are reported in the final read count table
+
+## Sample Inference
+
+The core sequence-variant inference algorithm was then applied to both forward and reverse reads separately
+
+\footnotesize
+
+```{r infer samples}
+dadaFs <- dada(derepFs, 
+               err=errF, 
+               multithread=numthr,
+               verbose=FALSE)
+#dadaFs[[1]]
+
+```
+
+\normalsize
+
+## Construct a sequence table
+
+The inferred **Amplicon Specific Variants** (ASV) are stored into a sequence table analogous to an **Operational taxonomic unit (OTU)** table.
+
+Table: Lengths and Count of the ASV sequences 
+
+\footnotesize
+
+```{r construct table}
+seqtab <- makeSequenceTable(dadaFs, 
+                             orderBy = "abundance")
+#dim(seqtab)
+
+# review results
+kable(t(table(nchar(getSequences(seqtab)))))
+```
+
+\normalsize
+
+## Remove chimeras
+
+Perform de novo chimera sequence detection and removal
+
+\footnotesize
+
+```{r remove chimera}
+seqtab.nochim <- removeBimeraDenovo(seqtab, 
+                                     method="consensus", 
+                                     multithread=numthr, 
+                                     verbose=FALSE)
+
+# dim(seqtab.nochim)
+
+# % after bimera removal
+prop <- sprintf("%.2f%%", 100*sum(seqtab.nochim)/sum(seqtab))
+
+cat(paste0("The proportion of non-chimeric ASVs is :", prop, sep=""), labels = NULL)
+```
+
+\normalsize
+
+\newpage
+
+## Track reads through the pipeline
+
+The next table reports read counts through all DADA2 pipeline steps.
+
+\footnotesize
+
+```{r track reads}
+getN <- function(x) sum(getUniques(x))
+# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+track <- cbind(out, 
+               sapply(dadaFs, getN), 
+               rowSums(seqtab.nochim)
+               )
+
+colnames(track) <- c("input", "filtered", "denoised", "nonchim")
+rownames(track) <- sample.names
+
+# show table in report
+kable(track)
+```
+
+\normalsize
+
+\newpage
+
+# PHYLOSEQ analysis
+
+## Assign taxonomy from SILVA
+
+Taxonomy is assigned using the R **[phyloseq](https://joey711.github.io/phyloseq/)** package and the **[SILVA reference databases](https://www.arb-silva.de/)**. 
+
+Two main files are used by DADA2 to assign taxonomy:
+
+* taxonomy levels 1 to 6 are assigned from the multi sequence file **`r config$silvaTrainSet`**
+* Species (level7) is added from the multi sequence file file **`r config$silvaSpecies`**
+
+\scriptsize
+
+```{r assign taxonomy}
+# assign levels 1 to 6
+# pacbio: add tryRC = TRUE
+taxa <- assignTaxonomy(seqtab.nochim,
+                       silvaTrainSet,
+                       minBoot=minBoot,
+                       tryRC=tryRC,
+                       taxLevels=c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+                       multithread=numthr,
+                       verbose=FALSE)
+
+# add level 7
+# addSpecies wraps the assignSpecies function to assign genus-species binomials to the input sequences by exact matching against a reference fasta. 
+# Those binomials are then merged with the input taxonomic table with species annotations appended as an additional column to the input table. 
+# Only species identifications where the genera in the input table and the binomial classification are consistent are included in the return table.
+taxa.species <- addSpecies(taxa,
+                     silvaSpecies,
+                     allowMultiple=allowMultiple,
+                     tryRC=tryRC,
+                     n=2000,
+                     verbose=FALSE
+                     )
+
+# create preview copy
+taxa.species.print <- taxa.species
+rownames(taxa.species.print) <- NULL
+
+# show simplified preview
+kable(unique(taxa.species.print))
+```
+
+\normalsize
+
+## Create phylogenic tree based on ASV sequences
+
+A tree was created using additional R packages [@Callahan2016]
+
+\footnotesize
+
+```{r phylogenic tree}
+seqs <- getSequences(seqtab.nochim)
+names(seqs) <- seqs # This propagates to the tip labels of the tree
+
+# library("DECIPHER")
+# the Decipher R package is used for aligning
+# takes time (uses 8-mers as-is)
+
+alignment <- DECIPHER::AlignSeqs(DNAStringSet(seqs), 
+                        processors=numthr,
+                        anchor=NA,
+                        verbose=FALSE)
+
+# library("phangorn")
+# The phangorn R package is used to construct a phylogenetic tree from the aligned sequences. 
+# Here we first construct a neighbor-joining tree,
+# then fit a GTR+G+I (Generalized time-reversible with Gamma rate variation) maximum likelihood tree 
+# using the neighbor-joining tree as a starting point.
+
+# convert to phangorn object
+phang.align <- phangorn::phyDat(as(alignment, "matrix"), 
+                       type="DNA")
+
+###############################
+# original dada2 tree commands
+# computes distances (takes time)
+dm <- phangorn::dist.ml(phang.align)
+
+
+
+# build tree (takes time)
+treeNJ <- phangorn::NJ(dm) # Note, tip order != sequence order
+
+fit = phangorn::pml(treeNJ, 
+           data=phang.align)
+
+## negative edges length changed to 0!
+fitGTR <- update(fit, 
+                  k=4, 
+                  inv=0.2)
+
+# optimize (takes long time)
+fitGTR <- phangorn::optim.pml(fitGTR, 
+                     model="GTR", 
+                     optInv=TRUE, 
+                     optGamma=TRUE,
+                     rearrangement = "stochastic", 
+                     control = pml.control(trace = 0)
+                     )
+
+# plot optimized tree
+tp <- ggplot(fitGTR$tree, aes(x, y)) + 
+  geom_tree() + 
+  theme_tree()
+
+outfile <- file.path(outpath, "pictures", "Treeplot.pdf", fsep = .Platform$file.sep)
+
+suppressWarnings(ggsave(outfile, 
+       tp,
+       device = "pdf",
+       width = 12,
+       height = 12,
+       units = "cm",
+       dpi = 300))
+```
+
+\normalsize
+
+Figure 4: Phylogenic tree plot from ASV sequence alignments
+
+\begin{center}
+
+\includegraphics[width=200pt]{`r outpath`/pictures/Treeplot.pdf}
+
+\end{center}
+
+\newpage
+
+## Perform standard Phyloseq analysis of the data
+
+The metadata information, ASV groups and ASV counts are associated to the phylogenic tree to constitute a final phyloseq list object and saved to the project folder as **phyloseq_data.rds** object as well as a **phyloseq.RData** workspace dump. 
+
+This saved phyloseq object can be loaded into third-party tools like the online **[exploremetabar](https://shiny.migale.inrae.fr/app/exploremetabar)** or a locally installed **[shiny-phyloseq](https://github.com/joey711/shiny-phyloseq)** to create custom plots and further analyse the results
+
+The Phyloseq object has the following structure:
+
+\footnotesize
+
+```{r assemble phyloseq}
+# create sample_table to facet the results
+samples.out <- rownames(seqtab.nochim)
+samdf <- as.data.frame(sample_metadata)
+rownames(samdf) <- samples.out
+
+# We now construct a phyloseq object directly from the dada2 outputs.
+ps <- phyloseq::phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
+               sample_data(samdf), 
+               tax_table(taxa.species),
+               phy_tree(fitGTR$tree))
+
+# add Genus_Species rank to tax_table
+myranks = c("Genus", "Species")
+mylabels = apply(tax_table(ps)[, myranks], 1, paste, sep="", collapse="_")
+# Add concatenated labels as a new rank
+tax_table(ps) <- cbind(tax_table(taxa.species), Genus_Species=mylabels)
+
+# review
+# colnames(tax_table(ps))
+# "Kingdom"       "Phylum"        "Class"         "Order"         "Family"        "Genus"         "Species"       "Genus_Species"
+
+# add refseq
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+
+# rename OTUs to ASV#
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+
+# save to disk
+outfile <- file.path(outpath, "phyloseq_data.rds", fsep = .Platform$file.sep)
+saveRDS(ps, outfile)
+
+outfile2 <- file.path(outpath, "phyloseq.RData", fsep = .Platform$file.sep)
+save(ps, file=outfile2)
+
+# show phyloseq content
+ps
+
+```
+
+\normalsize
+
+\newpage
+
+## Phyloseq basic plots
+
+Several generic plots are shown below but do not make use of the metadata annotations
+
+### BarPlots
+
+\footnotesize
+
+```{r phyloseq bar plots}
+pfam <- plot_bar(ps, fill="Family")
+outfile <- file.path(outpath, "pictures", "phyloseq_Family.pdf", fsep = .Platform$file.sep)
+suppressWarnings(ggsave(outfile, 
+       pfam,
+       device = "pdf",
+       width = 21,
+       height = 16,
+       units = "cm",
+       dpi = 300))
+
+pgen <- plot_bar(ps, fill="Genus")
+outfile <- file.path(outpath, "pictures", "phyloseq_Genus.pdf", fsep = .Platform$file.sep)
+suppressWarnings(ggsave(outfile, 
+       pgen,
+       device = "pdf",
+       width = 21,
+       height = 16,
+       units = "cm",
+       dpi = 300))
+
+pgsp <- plot_bar(ps, fill="Genus_Species")
+outfile <- file.path(outpath, "pictures", "phyloseq_Genus_Species.pdf", fsep = .Platform$file.sep)
+suppressWarnings(ggsave(outfile, 
+       pgsp,
+       device = "pdf",
+       width = 21,
+       height = 16,
+       units = "cm",
+       dpi = 300))
+```
+
+\normalsize
+
+\begin{center}
+
+Bar-plot for the Family level
+
+\includegraphics[width=400pt]{`r outpath`/pictures/phyloseq_Family.pdf}
+
+Bar-plot for the Genus level
+
+\includegraphics[width=400pt]{`r outpath`/pictures/phyloseq_Genus.pdf}
+
+Bar-plot for the Genus+Species level
+
+\includegraphics[width=400pt]{`r outpath`/pictures/phyloseq_Genus_Species.pdf}
+
+\end{center}
+
+### Alpha Diversity
+
+Alpha diversity reports how many different entities are present in a sample.
+
+\footnotesize
+
+```{r phyloseq alpha diversity}
+# available distance metrics
+dist_methods <- unlist(distanceMethodList)
+
+alphaD <- suppressWarnings(plot_richness(ps, x="sample", measures=c("Shannon", "Simpson")))
+outfile <- file.path(outpath, "pictures", "alpha_diversity.pdf", fsep = .Platform$file.sep)
+suppressWarnings(ggsave(outfile, 
+       alphaD,
+       device = "pdf",
+       width = 21,
+       height = 16,
+       units = "cm",
+       dpi = 300))
+```
+
+\normalsize
+
+Alpha Diversity plot
+
+\begin{center}
+
+\includegraphics[width=400pt]{`r outpath`/pictures/alpha_diversity.pdf}
+
+\end{center}
+
+### Beta Diversity
+
+This metric compares the samples and show how similar in composition and relative abundance they are.
+
+\footnotesize
+
+```{r phyloseq beta diversity, include = FALSE}
+ps.prop <- suppressWarnings(transform_sample_counts(ps, function(otu) otu/sum(otu)))
+
+ord.nmds.bray <- suppressWarnings(phyloseq::ordinate(ps.prop,
+                                                     method="NMDS", 
+                                                     distance="bray",
+                                                     verbose=FALSE))
+
+# increase size and gitter labels
+# reduce legend text size
+betaD <- plot_ordination(ps.prop, 
+                         ord.nmds.bray, 
+                         color="sample",
+                         title="Bray NMDS") +
+  geom_text(mapping = aes(label = sample), size = 3, position=position_jitter(width=0.2,height=0.2)) +
+  theme(legend.text=element_text(size=rel(0.75)))
+
+
+outfile <- file.path(outpath, "pictures", "beta_diversity.pdf", fsep = .Platform$file.sep)
+
+suppressWarnings(ggsave(outfile, 
+       betaD,
+       device = "pdf",
+       width = 21,
+       height = 16,
+       units = "cm",
+       dpi = 300))
+```
+
+\normalsize
+
+beta Diversity plot
+
+\begin{center}
+
+\includegraphics[width=400pt]{`r outpath`/pictures/beta_diversity.pdf}
+
+\end{center}
+
+### Phylogeny tree
+
+\footnotesize
+
+```{r taxa tree plot}
+# make plots
+taxa_tree <- plot_tree(ps, 
+          ladderize = "left", 
+          justify = "left", 
+          size = "Abundance",
+          color="sample",
+          sizebase = 10,
+          base.spacing=0.1)
+
+outfile <- file.path(outpath, "pictures", "taxa_tree_plot.pdf", fsep = .Platform$file.sep)
+
+suppressWarnings(ggsave(outfile, 
+       taxa_tree,
+       device = "pdf",
+       width = 21,
+       height = 16,
+       units = "cm",
+       dpi = 300))
+
+```
+
+\normalsize
+
+Tree plot
+
+\begin{center}
+
+\includegraphics[width=400pt]{`r outpath`/pictures/taxa_tree_plot.pdf}
+
+\end{center}
+
+
+```{r save final state for Reload}
+outfile <- file.path(outpath, "final_state.RData", fsep = .Platform$file.sep)
+save.image(outfile)
+```
+
+
+\normalsize
+
+\footnotesize
+
+```{r, eval=FALSE, echo=FALSE}
+sessionInfo()
+```
+
+\normalsize
+
+\newpage
+
+# References
+
+\footnotesize
