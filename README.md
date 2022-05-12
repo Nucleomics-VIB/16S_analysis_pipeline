@@ -7,3 +7,5 @@ Please read on *Wikipedia* about the ribosoma RNA complex [here](https://en.wiki
 The impact on the choice of primer for amplicon sequencing to perform 16S metagenomics analysis of complex populations is discussed [here](https://doi.org/10.1038/s41467-019-13036-1)
 
 click on [Wiki](https://github.com/Nucleomics-VIB/16S_analysis_pipeline/wiki) above to access the tutorial material for this repo.
+
+@WORK Input data and code files can be found on our local file-share at (**GBW-0011_NUC/RandD/022_16S_analysis_pipeline**)
