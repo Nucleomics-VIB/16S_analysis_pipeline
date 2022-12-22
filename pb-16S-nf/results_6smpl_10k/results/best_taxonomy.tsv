@@ -1,0 +1,28 @@
+Feature ID	Taxon	Confidence
+e4326e04a50bad416b5aa32620852cbd	d__Bacteria; p__Firmicutes; c__Bacilli; o__Staphylococcales; f__Staphylococcaceae; g__Staphylococcus; s__Staphylococcus aureus	100
+7149c9557908919f8c8890592dce06c8	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Enterobacterales; f__Enterobacteriaceae; g__Salmonella; s__Salmonella enterica	99
+6395873ddbb7d1a8e8dfe8652e482e70	d__Bacteria; p__Firmicutes; c__Bacilli; o__Bacillales; f__Bacillaceae; g__Bacillus; s__Unclassified	40
+26cfdb2bcbd3a64a84e9b237d94a97eb	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Enterococcaceae; g__Enterococcus; s__Enterococcus faecalis	100
+cbb8c7fab987004cb4135dca67812c6e	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Listeriaceae; g__Listeria; s__Listeria monocytogenes B	85
+a0ec2668157ffb2374ece8cad58ecc5f	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Pseudomonadales; f__Pseudomonadaceae; g__Pseudomonas; s__Pseudomonas aeruginosa	100
+579aeb62d4fe9045ccbc28e8a6b199ae	d__Bacteria; p__Firmicutes; c__Bacilli; o__Bacillales; f__Bacillaceae; g__Bacillus; s__Bacillus intestinalis	88
+752a3f85a4e352db4139ef9df88b9100	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Listeriaceae; g__Listeria; s__Listeria monocytogenes B	80
+3b44c0cd22f7eeac2386b9f2d475930a	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Unclassified; f__Unclassified; g__Unclassified; s__Unclassified	39
+685941421ec5ec3dd6a7649435daa0ad	d__Bacteria; p__Firmicutes; c__Bacilli; o__Staphylococcales; f__Staphylococcaceae; g__Staphylococcus; s__Staphylococcus aureus	80
+e36e0fd9c244f199af2a095f33d8e940	d__Bacteria; p__Firmicutes; c__Bacilli; o__Staphylococcales; f__Staphylococcaceae; g__Staphylococcus; s__Staphylococcus aureus	100
+0f25aacc53e5e2437da655468398b634	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Lactobacillaceae; g__Limosilactobacillus; s__Limosilactobacillus fermentum	100
+5a5ecbf6135988e4f3121bca98512580	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Lactobacillaceae; g__Limosilactobacillus; s__Limosilactobacillus fermentum	100
+c2a65de54ce6b4b25cdab60786c5c936	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Lactobacillaceae; g__Limosilactobacillus; s__Limosilactobacillus fermentum	100
+a67df227e452bac10d57f4e0f644e1fb	d__Bacteria; p__Firmicutes; c__Bacilli; o__Bacillales; f__Bacillaceae; g__Bacillus; s__Bacillus intestinalis	83
+8a19d248389e395c3fca7abd94d85ddc	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Listeriaceae; g__Listeria; s__Listeria monocytogenes	100
+5692030c68be2bfb5cd977bea37add62	d__Bacteria; p__Firmicutes; c__Bacilli; o__Bacillales; f__Bacillaceae; g__Bacillus; s__Bacillus intestinalis	82
+02d0131b0e738a880573e99d56f9293c	d__Bacteria; p__Firmicutes; c__Bacilli; o__Bacillales; f__Bacillaceae; g__Bacillus; s__Bacillus sp010093085	86
+5c485fac17792c209b4cadf3090c087f	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Lactobacillaceae; g__Limosilactobacillus; s__Limosilactobacillus fermentum	100
+a605e3fda52a8afcbe14148442182e51	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Unclassified; f__Unclassified; g__Unclassified; s__Unclassified	59
+2fdeeefc2cb15837663b1d582f1415d0	d__Bacteria; p__Actinobacteriota; c__Coriobacteriia; o__Coriobacteriales; f__Coriobacteriaceae; g__Collinsella; s__Collinsella sp900764415	99
+2ceb297649a971ecf558baa494cc6112	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Enterobacterales; f__Enterobacteriaceae; g__Escherichia-Shigella; s__Escherichia-Shigella boydii	100
+c0089458dae2c0559162e58eb2661873	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Enterobacterales; f__Enterobacteriaceae; g__Escherichia; s__Unclassified	43
+3a6226f0b0f4c5167e3709764643d5ff	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Unclassified; f__Unclassified; g__Unclassified; s__Unclassified	44
+6882d04a5e51d0361293476c87fc103c	d__Bacteria; p__Firmicutes; c__Bacilli; o__Lactobacillales; f__Lactobacillaceae; g__Limosilactobacillus; s__Limosilactobacillus fermentum	100
+29dec8e21c8ac6c1e1f61f6ec3fdb9fe	d__Bacteria; p__Proteobacteria; c__Gammaproteobacteria; o__Enterobacterales; f__Enterobacteriaceae; g__Salmonella; s__Salmonella enterica	91
+47bdcb7e77c16e332dd5e09d1fa3bf0c	d__Bacteria; p__Firmicutes; c__Bacilli; o__Bacillales; f__Bacillaceae; g__Bacillus; s__Bacillus intestinalis	84

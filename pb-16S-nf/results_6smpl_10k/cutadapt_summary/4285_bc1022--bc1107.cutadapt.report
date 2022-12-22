@@ -1,0 +1,127 @@
+{
+  "tag": "Cutadapt report",
+  "schema_version": [0, 1],
+  "cutadapt_version": "4.0",
+  "python_version": "3.8.13",
+  "command_line_arguments": [
+    "-g",
+    "AGRGTTYGATYMTGGCTCAG...AAGTCGTAACAAGGTARCY",
+    "4285_bc1022--bc1107.filterQ20.fastq.gz",
+    "-o",
+    "4285_bc1022--bc1107.trimmed.fastq.gz",
+    "-j",
+    "80",
+    "--trimmed-only",
+    "--revcomp",
+    "-e",
+    "0.1",
+    "--json",
+    "4285_bc1022--bc1107.cutadapt.report"
+  ],
+  "cores": 80,
+  "input": {
+    "path1": "4285_bc1022--bc1107.filterQ20.fastq.gz",
+    "path2": null,
+    "paired": false
+  },
+  "read_counts": {
+    "input": 21322,
+    "filtered": {
+      "too_short": null,
+      "too_long": null,
+      "too_many_n": null,
+      "too_many_expected_errors": null,
+      "casava_filtered": null,
+      "discard_trimmed": null,
+      "discard_untrimmed": 232
+    },
+    "output": 21090,
+    "reverse_complemented": 11720,
+    "read1_with_adapter": 21090,
+    "read2_with_adapter": null
+  },
+  "basepair_counts": {
+    "input": 32283711,
+    "input_read1": 32283711,
+    "input_read2": null,
+    "quality_trimmed": null,
+    "quality_trimmed_read1": null,
+    "quality_trimmed_read2": null,
+    "output": 31083077,
+    "output_read1": 31083077,
+    "output_read2": null
+  },
+  "adapters_read1": [
+    {
+      "name": "1",
+      "total_matches": 42180,
+      "on_reverse_complement": 11720,
+      "linked": true,
+      "five_prime_end": {
+        "type": "regular_five_prime",
+        "sequence": "AGRGTTYGATYMTGGCTCAG",
+        "error_rate": 0.1,
+        "indels": true,
+        "error_lengths": [9, 19, 20],
+        "matches": 21090,
+        "adjacent_bases": null,
+        "dominant_adjacent_base": null,
+        "trimmed_lengths": [
+          {"len": 18, "expect": 0.0, "counts": [1, 23, 34, 1]},
+          {"len": 19, "expect": 0.0, "counts": [10, 1702, 151, 3]},
+          {"len": 20, "expect": 0.0, "counts": [14632, 2088, 178, 16]},
+          {"len": 21, "expect": 0.0, "counts": [11, 1808, 168, 2]},
+          {"len": 22, "expect": 0.0, "counts": [2, 37, 197, 15]},
+          {"len": 23, "expect": 0.0, "counts": [0, 3, 6, 1]},
+          {"len": 26, "expect": 0.0, "counts": [0, 1]}
+        ]
+      },
+      "three_prime_end": {
+        "type": "regular_three_prime",
+        "sequence": "AAGTCGTAACAAGGTARCY",
+        "error_rate": 0.1,
+        "indels": true,
+        "error_lengths": [9, 19],
+        "matches": 21090,
+        "adjacent_bases": {
+          "A": 19,
+          "C": 1,
+          "G": 21056,
+          "T": 14,
+          "": 0
+        },
+        "dominant_adjacent_base": "G",
+        "trimmed_lengths": [
+          {"len": 15, "expect": 0.0, "counts": [1]},
+          {"len": 17, "expect": 0.0, "counts": [1, 53, 7, 1]},
+          {"len": 18, "expect": 0.0, "counts": [741, 1147, 195, 21]},
+          {"len": 19, "expect": 0.0, "counts": [13480, 3978, 464, 5]},
+          {"len": 20, "expect": 0.0, "counts": [413, 447, 61, 11]},
+          {"len": 21, "expect": 0.0, "counts": [2, 31, 6]},
+          {"len": 22, "expect": 0.0, "counts": [0, 2]},
+          {"len": 24, "expect": 0.0, "counts": [0, 1]},
+          {"len": 25, "expect": 0.0, "counts": [0, 1]},
+          {"len": 37, "expect": 0.0, "counts": [0, 1]},
+          {"len": 57, "expect": 0.0, "counts": [1]},
+          {"len": 584, "expect": 0.0, "counts": [1]},
+          {"len": 1522, "expect": 0.0, "counts": [1]},
+          {"len": 1526, "expect": 0.0, "counts": [2]},
+          {"len": 1530, "expect": 0.0, "counts": [1]},
+          {"len": 1533, "expect": 0.0, "counts": [1]},
+          {"len": 1536, "expect": 0.0, "counts": [2, 1]},
+          {"len": 1538, "expect": 0.0, "counts": [1]},
+          {"len": 1542, "expect": 0.0, "counts": [1]},
+          {"len": 1550, "expect": 0.0, "counts": [0, 0, 1]},
+          {"len": 1558, "expect": 0.0, "counts": [1]},
+          {"len": 1559, "expect": 0.0, "counts": [1]},
+          {"len": 1565, "expect": 0.0, "counts": [1]},
+          {"len": 1566, "expect": 0.0, "counts": [1]},
+          {"len": 1570, "expect": 0.0, "counts": [1]},
+          {"len": 1587, "expect": 0.0, "counts": [1]},
+          {"len": 1599, "expect": 0.0, "counts": [1]}
+        ]
+      }
+    }
+  ],
+  "adapters_read2": null
+}

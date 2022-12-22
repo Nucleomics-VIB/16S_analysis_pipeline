@@ -1,0 +1,631 @@
+---
+title:  |
+  | PacificBiosciences / pb-16S-nf
+author: 
+- "Stéphane Plaisance [VIB - Nucleomics Core, nucleomics@vib.be]"
+date: $`r format(Sys.time(), "%a %b %d, %Y")`$ - version 1.0
+fontsize: 10pt
+geometry: top=1cm, bottom=1cm, left=2.5cm, right=1.5cm, includeheadfoot=true
+papersize: a4paper
+bibliography: tex_data/bibliography.bib
+output:
+  rmarkdown::pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    fig_caption: no
+    fig_width: 5
+    fig_height: 4
+    includes:  
+      in_header: tex_data/preamble.tex
+---
+
+```{r setup, include=FALSE}
+
+# set default parameters [echo=TRUE to include code]
+# general
+library("knitr")
+library("readr")
+library("ggplot2")
+library("RColorBrewer")
+
+wd <- "/data/analyses/Zymo-SequelIIe-Hifi"
+opts_chunk$set(message=FALSE, 
+               warning=FALSE, 
+               eval=TRUE,
+               echo=TRUE,
+               include=TRUE,
+               fig.cap=".",
+               fig.show="asis",
+               fig.keep="high",
+               cache=TRUE,
+               comment = NA,
+               root.dir=wd)
+setwd(wd)
+```
+
+\bigskip
+
+\newpage
+
+## Introduction
+
+We describe here a new nextflow pipeline **pb-16S-nf** \footnote{\url{https://github.com/PacificBiosciences/pb-16S-nf}} developed by **Khi Pin, Chua** (\@proteinosome) as part of the Pacbio open code hosted on github and can be used to analyze data obtained with the Pacbio 16S method \footnote{\url{https://www.pacb.com/wp-content/uploads/Procedure-checklist-Amplification-of-bacterial-full-length-16S-rRNA-gene-with-barcoded-primers.pdf}}. Khi Pin is actively developing this package further and was very helpful in deploying this code and correcting a few issues.
+
+\<\<This Nextflow pipeline is designed to process PacBio HiFi full-length 16S data into high quality amplicon sequence variants (ASVs) using [**QIIME2**](https://qiime2.org/) and [**DADA2**](https://benjjneb.github.io/dada2/). It provides a set of visualization through the QIIME 2 framework for interactive plotting. The pipeline generates a HTML report for the important statistics and top taxonomies\>\> ([**taken from the github page**](https://github.com/PacificBiosciences/pb-16S-nf)).
+
+The Nextflow pipeline depends on two text files and a matching folder of demultiplexed HiFi fastq files produced by the SMRTLink platform.
+
+The pipeline performs a number pre-processing steps followed by DADA2 and Qiime2 commands. All of it integrated and standardized for ease of use.
+
+The general workflow is shown in the next figure
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=500pt]{pictures/pipeline_workflow.png}
+
+\end{center}
+```
+\newpage
+
+## Theoretical composition of the Zymo mock community
+
+In order to validate the workflow, we collected barcoded positive control samples from 5 Nucleomics Core 16S Sequel-IIe experiments and used them to compare pb-16S-nf results to the theoretical distribution present in the **Zymo mock community** \footnote{\url{https://files.zymoresearch.com/datasheets/ds1706_zymobiomics_microbial_community_standards_data_sheet.pdf}}
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/Zymo_D6305_distribution.png}
+
+\end{center}
+```
+**Note:** The copy number of rDNA genes in bacteria can vary a lot and contribute to 16S counts appear deferentially affected depending on the bacterial host. This is well documented for the mock community used in this experiment in the Zymo protocol document \footnote{\url{https://files.zymoresearch.com/protocols/_d6305_d6306_zymobiomics_microbial_community_dna_standard.pdf}}.
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=300pt]{pictures/copynumber.png}
+
+\end{center}
+```
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/copynumber2.png}
+
+\end{center}
+```
+**Note** that yeast have copy numbers one order of magnitude higher than bacteria, although not relevant here it will be in the case of mixed populations between yeast and bacteria and amplicons for both 16S and 18S (or ITS).
+
+\newpage
+
+## Nextflow install and setup
+
+The nextflow pipeline is available from github and should be cloned locally on the analysis server. After download of the github repo, the first nextflow run gets 3 Docker images and downloads the classification databases.
+
+During the first run, the docker components (N=3) will be downloaded and installed in the default Docker cache on the server
+
+-   kpinpb/pb-16s-nf-tools
+-   kpinpb/pb-16s-nf-qiime
+-   kpinpb/pb-16s-vis
+
+\bigskip
+
+\footnotesize
+
+```{bash setup nextflow, eval=FALSE, echo=TRUE}
+git clone git@github.com:PacificBiosciences/pb-16S-nf.git
+cd pb-16S-nf
+
+nextflow run main.nf \
+  --download_db \
+  -profile docker
+
+# a new 'databases' folder is added to the nextflow folder
+#  GTDB_bac120_arc53_ssu_r207_fullTaxo.fa.gz
+#  GTDB_ssu_all_r207.qza
+#  GTDB_ssu_all_r207.taxonomy.qza
+#  RefSeq_16S_6-11-20_RDPv16_fullTaxo.fa.gz
+#  silva-138-99-seqs.qza
+#  silva-138-99-tax.qza
+#  silva_nr99_v138.1_wSpecies_train_set.fa.gz
+```
+
+\normalsize
+
+## Nextflow test
+
+A built-in test data can be used to validate the install as follows
+
+\footnotesize
+
+```{bash test nextflow, eval=FALSE, echo=TRUE}
+# Create test_sample.tsv for testing
+echo -e "sample-id\tabsolute-filepath\ntest_data\t$(readlink -f test_data/test_1000_reads.fastq.gz)" > test_data/test_sample.tsv
+
+nextflow run main.nf \
+  --input test_data/test_sample.tsv \
+  --metadata test_data/test_metadata.tsv \
+  --outdir test_results \
+  -profile docker
+```
+
+\normalsize
+
+The run should take only few minutes and produce a folder with intermediate data and results as discussed later in this report.
+
+\newpage
+
+## Nextflow Zymo run
+
+Two text files need to be prepared based on the available read sets; a sample manifest and a metadata file (as standard in QIIME2):
+
+-   manifest: a run_sample.tsv file that relates the sample names (barcode-pairs) and the full path to each fastq file
+-   metadata: a run_metadata.tsv file that relates the same sample names to sample groups or conditions used in the wet-lab experiment (info provided by the customer)
+
+The two files used in this test run are reproduced below
+
+-   run_sample.tsv
+
+\footnotesize
+
+| sample-id           | absolute-file-path                                                    |
+|------------------|------------------------------------------------------|
+| 4170_bc1005--bc1096 | /data/analyses/Zymo-SequelIIe-Hifi/reads/4170_bc1005--bc1096.fastq.gz |
+| 4285_bc1022--bc1107 | /data/analyses/Zymo-SequelIIe-Hifi/reads/4285_bc1022--bc1107.fastq.gz |
+| 4296_bc1022--bc1060 | /data/analyses/Zymo-SequelIIe-Hifi/reads/4296_bc1022--bc1060.fastq.gz |
+| 4112_bc1008--bc1075 | /data/analyses/Zymo-SequelIIe-Hifi/reads/4112_bc1008--bc1075.fastq.gz |
+| 4128_bc1005--bc1107 | /data/analyses/Zymo-SequelIIe-Hifi/reads/4128_bc1005--bc1107.fastq.gz |
+| 4356_bc1005--bc1112 | /data/analyses/Zymo-SequelIIe-Hifi/reads/4356_bc1005--bc1112.fastq.gz |
+
+\normalsize
+
+**Note:** The path should be the full path to the fastq files, if you copy the files elsewhere, do not forget to adapt the second column to reflect your storage.
+
+-   run_metadata.tsv
+
+\footnotesize
+
+| sample_name         | condition |
+|---------------------|-----------|
+| 4170_bc1005--bc1096 | control   |
+| 4285_bc1022--bc1107 | control   |
+| 4296_bc1022--bc1060 | control   |
+| 4112_bc1008--bc1075 | control   |
+| 4128_bc1005--bc1107 | control   |
+| 4356_bc1005--bc1112 | control   |
+
+\normalsize
+
+the condition column should be of type 'categorical' (not numeric!)
+
+Note that in a real experiment, the conditions will describe more sample groups than just 'control'
+
+The following code was run to start the analysis:
+
+\footnotesize
+
+```{bash run nextflow, eval=FALSE, echo=TRUE}
+
+# the full list of full path fastq can be obtained with:
+# find fastq_folder -name "*.fastq.gz" -exec readlink -f {} \;
+
+tooldir="/opt/biotools/pb-16S-nf"
+cd ${tooldir}
+
+# use >= 32 cpu for good performance
+cpu=32
+infolder=<path-to-indata>
+sample_file=${infolder}/run_samples.tsv
+metadata_file=${infolder}/run_metadata.tsv
+outfolder=<path-to-outdata>
+
+nextflow run main.nf \
+  --input ${sample_file} \
+  --metadata ${metadata_file} \
+  --outdir ${outfolder} \
+  --dada2_cpu ${cpu} \
+  --vsearch_cpu ${cpu} \
+  --cutadapt_cpu ${cpu} \
+  -profile docker
+```
+
+\normalsize
+
+The nextflow pipeline produces live output and stores all log files for inspection as well as trouble-shooting
+
+\newpage
+
+The pipeline executes the following tasks using here default parameters
+
+\footnotesize
+
+    Launching `main.nf` [confident_fermat] DSL2 - revision: 6990708c9f
+
+      Parameters set for pb-16S-nf pipeline for PacBio HiFi 16S
+      =========================================================
+      Number of samples in samples TSV: 6
+      Filter input reads above Q: 20
+      Trim primers with cutadapt: Yes
+      Forward primer: AGRGTTYGATYMTGGCTCAG
+      Reverse primer: AAGTCGTAACAAGGTARCY
+      Minimum amplicon length filtered in DADA2: 1000
+      Maximum amplicon length filtered in DADA2: 1600
+      maxEE parameter for DADA2 filterAndTrim: 2
+      minQ parameter for DADA2 filterAndTrim: 0
+      Pooling method for DADA2 denoise process: pseudo
+      Minimum number of samples required to keep any ASV: 1
+      Minimum number of reads required to keep any ASV: 5
+      Taxonomy sequence database for VSEARCH: /opt/biotools/pb-16S-nf/databases/GTDB_ssu_all_r207.qza
+      Taxonomy annotation database for VSEARCH: /opt/biotools/pb-16S-nf/databases/GTDB_ssu_all_r207.taxonomy.qza
+      Skip Naive Bayes classification: false
+      SILVA database for Naive Bayes classifier: /opt/biotools/pb-16S-nf/databases/silva_nr99_v138.1_wSpecies_train_set.fa.gz
+      GTDB database for Naive Bayes classifier: /opt/biotools/pb-16S-nf/databases/GTDB_bac120_arc53_ssu_r207_fullTaxo.fa.gz
+      RefSeq + RDP database for Naive Bayes classifier: /opt/biotools/pb-16S-nf/databases/RefSeq_16S_6-11-20_RDPv16_fullTaxo.fa.gz
+      VSEARCH maxreject: 100
+      VSEARCH maxaccept: 100
+      VSEARCH perc-identity: 0.97
+      QIIME 2 rarefaction curve sampling depth: null
+      Number of threads specified for cutadapt: 80
+      Number of threads specified for DADA2: 80
+      Number of threads specified for VSEARCH: 80
+      Script location for HTML report generation: /opt/biotools/pb-16S-nf/scripts/visualize_biom.Rmd
+      Container enabled via docker/singularity: true
+      Version of Nextflow pipeline: 0.4
+
+    executor >  Local (24)
+    [54/6fb9cd] process > pb16S:write_log                  [100%] 1 of 1 
+    [0a/64e613] process > pb16S:QC_fastq (3)               [100%] 6 of 6 
+    [2b/de1b80] process > pb16S:cutadapt (6)               [100%] 6 of 6 
+    [11/21c173] process > pb16S:QC_fastq_post_trim (6)     [100%] 6 of 6 
+    [62/34b924] process > pb16S:collect_QC                 [100%] 1 of 1 
+    [f6/adf720] process > pb16S:prepare_qiime2_manifest    [100%] 1 of 1 
+    [90/056fed] process > pb16S:import_qiime2              [100%] 1 of 1 
+    [54/2d5769] process > pb16S:demux_summarize            [100%] 1 of 1 
+    [71/2b4460] process > pb16S:dada2_denoise                  [100%] 1 of 1 
+    [bb/3f3b46] process > pb16S:filter_dada2                   [100%] 1 of 1 
+    [5a/8b0eb6] process > pb16S:dada2_qc (1)                   [100%] 1 of 1 
+    [25/3fb725] process > pb16S:qiime2_phylogeny_diversity (1) [100%] 1 of 1 
+    [cf/e3bd62] process > pb16S:dada2_rarefaction (1)          [100%] 1 of 1 
+    [ee/0759ee] process > pb16S:class_tax                      [100%] 1 of 1 
+    [f9/fd76d0] process > pb16S:dada2_assignTax                [100%] 1 of 1 
+    [ec/83b49d] process > pb16S:export_biom                    [100%] 1 of 1 
+    [65/285e74] process > pb16S:barplot_nb (1)                 [100%] 1 of 1 
+    [72/66021f] process > pb16S:barplot (1)                    [100%] 1 of 1 
+    [7e/d6da7d] process > pb16S:html_rep (1)                   [100%] 1 of 1 
+    [0d/213bfe] process > pb16S:krona_plot                     [100%] 1 of 1 
+    Completed at: 20-Dec-2022 13:46:47
+    Duration    : 14m 10s
+    CPU hours   : 17.4
+    Succeeded   : 35
+
+\normalsize
+
+NOTE: By default, the rarefaction depth is computed automatically to include 80% of the samples. In circumstances where all samples need to be included, an arbitrary depth based on the smaller sample(s) can be given as argument in the run command `--rarefaction_depth <observed smaller depth>` and changing the name of the output folder. This can also be done after the standard run (80%) using an extra argument `-resume --rarefaction_depth <observed smaller depth>` without having to rerun the whole pipeline (will overwrite the previous results where recomputed!).
+
+**REM:** The command above was rerun to take all samples into account, based on the read count slightly over 10'000 observed for the smallest sample.
+
+\footnotesize
+
+```{bash run nextflow rarefaction 10k, eval=FALSE, echo=TRUE}
+
+# the full list of full path fastq can be obtained with:
+# find fastq_folder -name "*.fastq.gz" -exec readlink -f {} \;
+
+tooldir="/opt/biotools/pb-16S-nf"
+cd ${tooldir}
+
+# use >= 32 cpu for good performance
+cpu=32
+infolder=<path-to-indata>
+sample_file=${infolder}/run_samples.tsv
+metadata_file=${infolder}/run_metadata.tsv
+outfolder=<path-to-outdata>
+
+nextflow run main.nf \
+  --input ${sample_file} \
+  --metadata ${metadata_file} \
+  --outdir ${outfolder}_10k \
+  --dada2_cpu ${cpu} \
+  --vsearch_cpu ${cpu} \
+  --cutadapt_cpu ${cpu} \
+  --rarefaction_depth 10000 \
+  -profile docker
+```
+
+\normalsize
+
+\footnotesize
+
+    Launching `main.nf` [confident_fermat] DSL2 - revision: 6990708c9f
+
+      Parameters set for pb-16S-nf pipeline for PacBio HiFi 16S
+      =========================================================
+      Number of samples in samples TSV: 6
+      Filter input reads above Q: 20
+      Trim primers with cutadapt: Yes
+      Forward primer: AGRGTTYGATYMTGGCTCAG
+      Reverse primer: AAGTCGTAACAAGGTARCY
+      Minimum amplicon length filtered in DADA2: 1000
+      Maximum amplicon length filtered in DADA2: 1600
+      maxEE parameter for DADA2 filterAndTrim: 2
+      minQ parameter for DADA2 filterAndTrim: 0
+      Pooling method for DADA2 denoise process: pseudo
+      Minimum number of samples required to keep any ASV: 1
+      Minimum number of reads required to keep any ASV: 5
+      Taxonomy sequence database for VSEARCH: /opt/biotools/pb-16S-nf/databases/GTDB_ssu_all_r207.qza
+      Taxonomy annotation database for VSEARCH: /opt/biotools/pb-16S-nf/databases/GTDB_ssu_all_r207.taxonomy.qza
+      Skip Naive Bayes classification: false
+      SILVA database for Naive Bayes classifier: /opt/biotools/pb-16S-nf/databases/silva_nr99_v138.1_wSpecies_train_set.fa.gz
+      GTDB database for Naive Bayes classifier: /opt/biotools/pb-16S-nf/databases/GTDB_bac120_arc53_ssu_r207_fullTaxo.fa.gz
+      RefSeq + RDP database for Naive Bayes classifier: /opt/biotools/pb-16S-nf/databases/RefSeq_16S_6-11-20_RDPv16_fullTaxo.fa.gz
+      VSEARCH maxreject: 100
+      VSEARCH maxaccept: 100
+      VSEARCH perc-identity: 0.97
+      QIIME 2 rarefaction curve sampling depth: 10000
+      Number of threads specified for cutadapt: 80
+      Number of threads specified for DADA2: 80
+      Number of threads specified for VSEARCH: 80
+      Script location for HTML report generation: /opt/biotools/pb-16S-nf/scripts/visualize_biom.Rmd
+      Container enabled via docker/singularity: true
+      Version of Nextflow pipeline: 0.4
+
+    executor >  Local (35)
+    [16/961acc] process > pb16S:write_log                      [100%] 1 of 1
+    [18/96f98f] process > pb16S:QC_fastq (3)                   [100%] 6 of 6
+    [fd/90ad41] process > pb16S:cutadapt (6)                   [100%] 6 of 6
+    [87/d217c6] process > pb16S:QC_fastq_post_trim (6)         [100%] 6 of 6
+    [3b/1d189f] process > pb16S:collect_QC                     [100%] 1 of 1
+    [77/b05b00] process > pb16S:prepare_qiime2_manifest        [100%] 1 of 1
+    [05/7b5f13] process > pb16S:import_qiime2                  [100%] 1 of 1
+    [ea/578c10] process > pb16S:demux_summarize                [100%] 1 of 1
+    [bb/3dc94d] process > pb16S:dada2_denoise                  [100%] 1 of 1
+    [f3/8da1e4] process > pb16S:filter_dada2                   [100%] 1 of 1
+    [1d/f0b337] process > pb16S:dada2_qc (1)                   [100%] 1 of 1
+    [76/9c0007] process > pb16S:qiime2_phylogeny_diversity (1) [100%] 1 of 1
+    [2c/44c38b] process > pb16S:dada2_rarefaction (1)          [100%] 1 of 1
+    [02/5a6f6a] process > pb16S:class_tax                      [100%] 1 of 1
+    [1d/f3a1b4] process > pb16S:dada2_assignTax                [100%] 1 of 1
+    [4c/051df4] process > pb16S:export_biom                    [100%] 1 of 1
+    [14/a4333e] process > pb16S:barplot_nb (1)                 [100%] 1 of 1
+    [0c/f2be75] process > pb16S:barplot (1)                    [100%] 1 of 1
+    [86/8cbd2e] process > pb16S:html_rep (1)                   [100%] 1 of 1
+    [ea/771e6b] process > pb16S:krona_plot                     [100%] 1 of 1
+    Completed at: 20-Dec-2022 14:08:30
+    Duration    : 13m 45s
+    CPU hours   : 17.3
+    Succeeded   : 35
+
+\normalsize
+
+\newpage
+
+## Zymo run results
+
+After running all Zymo samples, the standard output can be inspected and part of it shared with the customer
+
+The main output folder has the following standard structure:
+
+\footnotesize
+
+    cutadapt_summary
+    dada2
+    filtered_input_FASTQ
+    import_qiime
+    nb_tax
+    parameters.txt
+    results
+    summary_demux
+    trimmed_primers_FASTQ
+
+\normalsize
+
+The **results** folder contains symbolic links to all final key files and can be forwarded to the customer as-is
+
+\footnotesize
+
+    alpha-rarefaction-curves.qzv
+    best_tax_merged_freq_tax.tsv
+    best_taxonomy.tsv
+    best_taxonomy_withDB.tsv
+    best_tax.qza
+    dada2_qc.tsv
+    dada2_stats.qzv
+    dada2_table.qzv
+    feature-table-tax.biom
+    feature-table-tax_vsearch.biom
+    krona_html/
+    krona.qzv
+    merged_freq_tax.qzv
+    phylogeny_diversity/ (and subfolder: core-metrics-diversity/)
+    rarefaction_depth_suggested.txt
+    reads_QC/
+    samplefile.txt
+    stats.tsv
+    tax_export/
+    taxonomy_barplot_nb.qzv
+    taxonomy_barplot_vsearch.qzv
+    taxonomy.vsearch.qza
+    visualize_biom.html
+    vsearch_merged_freq_tax.tsv
+
+\normalsize
+
+The results of this run are shared next to this report in the **Zymo-SequelIIe-Hifi_results_local** folder to allow more exploration of this typical data.
+
+All files ending with *.qzv* are QIIME2 visualization files that can be fed to the online QIIME2-Viewer (<https://view.qiime2.org/>) to create and customize plots or tables.
+
+Files with extension *.qza* are QIIME2 objects that can be reloaded in QIIME2 to proceed in the analysis while files with extension *.tsv* are data files that can be used for further analysis (eg. in *R*).
+
+The main file present in the results folder is the RMarkdown converted document **visualize_biom.html** reporting all QC metrics and key findings through the user browser. Tables in that file are live and can be filtered.
+
+\newpage
+
+## Examples of QIIME-View outputs
+
+The *.qzv* files present in the results folder allow plotting using the **QIIME2 Viewer and integrated Emperor webtool** \footnote{\url{https://view.qiime2.org/}}
+
+The effect of rarefaction on the number of retained samples can be seen by plotting the file **alpha-rarefaction-curves.qzv**.
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/alpha_rarefaction_6smpl.png}
+
+\end{center}
+```
+As other illustration we show below two of the plots produced by the pipeline and showing multi dimensional principal component analyses results
+
+-   Bray Curtis
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/bray_curtis_6smpl.png}
+
+\end{center}
+```
+-   Weighted unifrac
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/weighted_unifrac_6smpl.png}
+
+\end{center}
+```
+The viewer can also produce pictures for other results present in the results folder among which the two classification outcomes produced by the workflow for our 5 Zymo samples. The *Vsearch* classification is sometimes more accurate and is based only on **Vsearch** best hits while the **Naive Bayes Classifier** is based on multiple search results and may be more complete but may sometimes include absent species (see doc on github)).
+
+-   taxonomy_barplot_nb.qzv
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/taxonomy_barplot_nb_6smpl.png}
+
+\end{center}
+```
+-   taxonomy_barplot_vsearch.qzv
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/taxonomy_barplot_vsearch_6smpl.png}
+
+\end{center}
+```
+When compared to the theoretical distribution shown in the first part of this report, experimental results are nicely concordant.
+
+Additional plots can be produced like the **Krona** classification shown next (sample bc1008-bc1075)
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/krona_4112_bc1008-bc1075.png}
+
+\end{center}
+```
+Various tables (.qzv) can be converted to pretty tables in the viewer as well.
+
+As example, the content of **dada2_stats.qzv** (this table is also present in the html report)
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=500pt]{pictures/dada2_stats_6smpl.png}
+
+\end{center}
+```
+A phylogeny tree can be converted to a picture using **TreeViewer** \footnote{\url{https://github.com/arklumpus/TreeViewer}} or **iTol** \footnote{\url{https://itol.embl.de/}} and the file *phylotree_mafft_rooted.nwk* (note that, in the current version of the pipeline, the the tree shows the ASV labels rather than the stain names)
+
+**REM:** iTol outputs are shown next
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/phylotree_mafft_rooted_6smpl.png}
+
+\end{center}
+```
+A little *R* magic can replace the Feature.ID used for tip labels with genus and species extracted from the taxonomy results.
+
+\footnotesize
+
+```{r rename tips, eval=FALSE, echo=FALSE}
+
+#!/usr/bin/env Rscript
+
+# RenameTreeTip.R
+# rename tree tip labels to genus.species
+# Stephane Plaisance - VIB-NC Dec-22-2022 v1.0
+
+# libraries to substitute strings and to read phylo trees
+library("tidyr")
+library("ape")
+
+# load taxonomy results to get FeatureIDs and corresponding Taxon classifications
+best_taxonomy_withDB <- read.delim("best_taxonomy.tsv")
+
+# remove leading strings ?__
+data <- as.data.frame(apply(best_taxonomy_withDB, 2, function(x) gsub(".__","",x)))
+
+# split Taxon into 7 columns
+data <- separate(data = data, 
+         col = Taxon, into = c("kingdom", "phylum", "class", "order", "family", "genus", "species"),
+         sep = ";")
+
+# retain genus and species to shorten labels in new columns
+#data$label <- paste0(data$genus, ".", data$species, sep="")
+data$label <- data$species
+
+# read ori tree file
+phy <- read.tree(file = "phylogeny_diversity/phylotree_mafft_rooted.nwk")
+
+# substitute tip.label with new shorter label
+phy$tip.label <- unlist(lapply(phy$tip.label, function(x) data$label[match(x, data$Feature.ID)]))
+
+# save to new tree file
+write.tree(file="phylogeny_diversity/renamed_phylotree_mafft_rooted.nwk", phy=phy)
+```
+
+\normalsize
+
+```{=tex}
+\begin{center}
+
+\includegraphics[width=400pt]{pictures/renamed_phylotree_mafft_rooted_6smpl.png}
+
+\end{center}
+```
+\newpage
+
+## Conclusion
+
+The **pb-16s-nf** pipeline is *fast* and *stable* and allows analysis of multiple barcoded samples obtained from PacBio Sequel-IIe runs with minimal user setup (preparing both *samples.tsv* and *metadata.tsv*).
+
+*Note*: Additional metadata columns can be passed to the tool and will be saved in the qiime2 objects,allowing advanced graphics production and follow-up analyses.
+
+In this particular mini-project (synthetic community), multiple ASV of the same genus+species suggest different 16S copies with different sequences present in the same bacterium present in the mock community.
+
+The height expected species were found back, although with slightly different names as compared to the Zymo doc. Some with a unique ASV (Pseudomonas.aeruginosa and Enterococcus.faecalis) while others were represented by multiple ASVs (eg. Escherichia.Coli and Bacilus.subtilis [intestinalis] both with 6 ASV detected).
+
+The pipeline produces a variety of outputs that can be fed to other Qiime2 methods or imported into R
+
+For more advanced follow-up analyzes, the user can use the many tools present in the [**Qiime2 package**](https://qiime2.org/) and get support from the [**Qiime2 Forum**](https://forum.qiime2.org/) as well as import the objects in R and create custom plots or downstream analyses there using the [**qiime2R R package**](https://github.com/jbisanz/qiime2R) (see [**tutorial on the qiime2 pages**](https://forum.qiime2.org/t/tutorial-integrating-qiime2-and-r-for-data-visualization-and-analysis-using-qiime2r/4121))
+
+\bigskip
+
+\bigskip
+
+last edits: $`r format(Sys.time(), "%a %b %d, %Y")`$
+
+![logo](NC_logo.png) more at [**http://www.nucleomics.be**](http://www.nucleomics.be){.uri}
+
+\newpage
+
+\footnotesize
+
+```{r, include=FALSE}
+sessionInfo()
+```
