@@ -10,4 +10,4 @@ click on [Wiki](https://github.com/Nucleomics-VIB/16S_analysis_pipeline/wiki) ab
 
 ### @WORK
 
-Input data and code files for the DADA experiments can be found on our local file-share at (**GBW-0011_NUC/ResearchDev/022_16S_analysis_pipeline**)
+Input data and code files for the DADA experiments can be found on our local file-share at (**GBW-0011_NUC/ResearchDev/017_16S_analysis_pipeline**)
